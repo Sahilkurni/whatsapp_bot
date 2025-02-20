@@ -13,6 +13,7 @@ app.use(express.json());
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
+        executablePath: process.env.CHROME_BIN || undefined, // Use system-installed Chrome if available
         args: [
             "--no-sandbox",
             "--disable-setuid-sandbox",
@@ -22,9 +23,10 @@ const client = new Client({
             "--disable-features=site-per-process",
             "--single-process"
         ],
-        headless: true // Ensure Puppeteer runs in headless mode
+        headless: "new" // Use the latest headless mode
     }
 });
+
 
 // QR Code Event
 client.on('qr', qr => {
