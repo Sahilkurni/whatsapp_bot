@@ -1,19 +1,21 @@
-// Importing required modules
-const fs = require('fs');
-const path = require('path');
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const express = require('express');
-const mime = require('mime-types');
+const express = require("express");
+const { Client, LocalAuth } = require("whatsapp-web.js");
+const qrcode = require("qrcode-terminal");
+const puppeteer = require("puppeteer");
 
-// Initialize Express app
+// Initialize Express
 const app = express();
+const PORT = process.env.PORT || 3000;
+
 app.use(express.json());
 
-// Initialize WhatsApp client with LocalAuth
+// Configure WhatsApp Web client
 const client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth({
+        dataPath: "/tmp/.wwebjs_auth" // Use /tmp for authentication on Render
+    }),
     puppeteer: {
-        executablePath: process.env.CHROME_BIN || undefined, // Use system-installed Chrome if available
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
         args: [
             "--no-sandbox",
             "--disable-setuid-sandbox",
@@ -23,82 +25,42 @@ const client = new Client({
             "--disable-features=site-per-process",
             "--single-process"
         ],
-        headless: "new" // Use the latest headless mode
+        headless: true
     }
 });
 
-
-// QR Code Event
-client.on('qr', qr => {
-    console.log('🔷 Scan this QR code to authenticate WhatsApp:', qr);
+// QR Code generation
+client.on("qr", (qr) => {
+    console.log("QR Code received, scan it with WhatsApp");
+    qrcode.generate(qr, { small: true });
 });
 
-// Ready Event
-client.on('ready', () => {
-    console.log('✅ WhatsApp Bot is ready!');
+// WhatsApp client ready
+client.on("ready", () => {
+    console.log("✅ WhatsApp Bot is ready!");
 });
 
-// Message Event
-client.on('message', message => {
-    console.log(`📩 New Message from ${message.from}: ${message.body}`);
-    if (message.body.toLowerCase() === 'hello') {
-        message.reply('Hello! How can I help you?');
+// Handle incoming messages
+client.on("message", async (message) => {
+    console.log(`Received message: ${message.body} from ${message.from}`);
+
+    if (message.body.toLowerCase() === "hello") {
+        await message.reply("Hello! How can I assist you?");
     }
 });
 
-// API to send a WhatsApp message
-app.post('/send-message', async (req, res) => {
-    const { phone, message } = req.body;
-    if (!phone || !message) {
-        return res.status(400).json({ success: false, message: 'Missing phone or message' });
-    }
-    try {
-        const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-        await client.sendMessage(chatId, message);
-        res.json({ success: true, message: 'Message sent successfully!' });
-    } catch (error) {
-        console.error('❌ Error sending message:', error);
-        res.status(500).json({ success: false, message: 'Failed to send message' });
-    }
-});
-
-// API to send an image or PDF
-app.post('/send-media', async (req, res) => {
-    const { phone, filePath, sendAsDocument } = req.body;
-    if (!phone || !filePath) {
-        return res.status(400).json({ success: false, message: 'Phone and filePath are required!' });
-    }
-    try {
-        const absolutePath = path.resolve(filePath);
-        if (!fs.existsSync(absolutePath)) {
-            return res.status(400).json({ success: false, message: 'File does not exist!' });
-        }
-        const mimeType = mime.lookup(absolutePath) || 'application/octet-stream';
-        const media = MessageMedia.fromFilePath(absolutePath);
-        const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-        await client.sendMessage(chatId, media, { sendMediaAsDocument, mimetype: mimeType });
-        res.json({ success: true, message: `${sendAsDocument ? 'PDF' : 'Image'} sent successfully!` });
-    } catch (error) {
-        console.error('❌ Error sending media:', error);
-        res.status(500).json({ success: false, message: `Failed to send ${sendAsDocument ? 'PDF' : 'Image'}` });
-    }
-});
-
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server is running on port ${PORT}`);
-});
-
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-    client.destroy();
-    console.log('WhatsApp client disconnected');
-    process.exit();
-});
-
-// Initialize WhatsApp client
+// Start WhatsApp client
 client.initialize();
+
+// API endpoint for health check
+app.get("/", (req, res) => {
+    res.send("WhatsApp Bot is running 🚀");
+});
+
+// Start Express server
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+});
 
 
 
